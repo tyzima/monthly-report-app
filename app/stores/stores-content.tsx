@@ -4,10 +4,7 @@ import { HeatmapChart } from "@/components/charts/heatmap-chart";
 import { PerformanceMetrics } from "@/components/analytics/performance-metrics";
 import { DetailedDataTable } from "@/components/tables/detailed-data-table";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Bar, BarChart, XAxis, YAxis, ResponsiveContainer } from "recharts";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 function processTimeSeriesData(data: any[]) {
   const dailyCounts = data.reduce((acc, record) => {
@@ -49,99 +46,44 @@ function processHeatmapData(data: any[]) {
 }
 
 function calculatePerformanceMetrics(data: any[]) {
-  const totalOrders = data.length;
-  
-  const now = new Date();
-  const upcomingDeadlines = data.filter(record => {
-    const deadline = record.fields['Order Deadline'];
+  const totalStores = data.length;
+  const upcomingDeadlines = data.filter(s => {
+    const deadline = s.fields['Order Deadline'];
     if (!deadline) return false;
     const deadlineDate = new Date(deadline);
+    const now = new Date();
     return deadlineDate > now && deadlineDate.getTime() - now.getTime() < 7 * 24 * 60 * 60 * 1000;
   }).length;
-
-  const uniquePrintTypes = new Set();
-  data.forEach(record => {
-    const printTypes = record.fields['Print Type (from Print Types)'];
-    if (Array.isArray(printTypes)) {
-      printTypes.forEach(type => uniquePrintTypes.add(type));
-    } else if (printTypes) {
-      uniquePrintTypes.add(printTypes);
-    }
-  });
+  
+  const overdueCount = data.filter(s => {
+    const deadline = s.fields['Order Deadline'];
+    if (!deadline) return false;
+    return new Date(deadline) < new Date();
+  }).length;
 
   return [
     {
-      title: 'Total Orders',
-      value: totalOrders,
-      change: 18,
-      changeType: 'increase',
+      title: 'Total Store Orders',
+      value: totalStores,
+      change: 12,
+      changeType: 'increase' as const,
       description: 'vs last period'
     },
     {
       title: 'Upcoming Deadlines',
       value: upcomingDeadlines,
-      change: 25,
-      changeType: 'increase',
+      change: -5,
+      changeType: 'decrease' as const,
       description: 'within 7 days'
     },
     {
-      title: 'Print Types',
-      value: uniquePrintTypes.size,
-      change: 5,
-      changeType: 'increase',
-      description: 'unique types'
+      title: 'Overdue Orders',
+      value: overdueCount,
+      change: -15,
+      changeType: 'decrease' as const,
+      description: 'past deadline'
     }
-  ] as const;
-}
-
-function processDeadlineAnalysis(data: any[]) {
-  const now = new Date();
-  const categories = {
-    'Overdue': 0,
-    '1-3 Days': 0,
-    '4-7 Days': 0,
-    '1-2 Weeks': 0,
-    '2+ Weeks': 0,
-    'No Deadline': 0
-  };
-
-  data.forEach(record => {
-    const deadline = record.fields['Order Deadline'];
-    if (!deadline) {
-      categories['No Deadline']++;
-      return;
-    }
-
-    const deadlineDate = new Date(deadline);
-    const diffTime = deadlineDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) categories['Overdue']++;
-    else if (diffDays <= 3) categories['1-3 Days']++;
-    else if (diffDays <= 7) categories['4-7 Days']++;
-    else if (diffDays <= 14) categories['1-2 Weeks']++;
-    else categories['2+ Weeks']++;
-  });
-
-  return Object.entries(categories).map(([category, count]) => ({ category, count }));
-}
-
-function processPrintTypeAnalysis(data: any[]) {
-  const typeCounts = data.reduce((acc, record) => {
-    const printTypes = record.fields['Print Type (from Print Types)'];
-    if (Array.isArray(printTypes)) {
-      printTypes.forEach(type => {
-        acc[type] = (acc[type] || 0) + 1;
-      });
-    } else if (printTypes) {
-      acc[printTypes] = (acc[printTypes] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  return Object.entries(typeCounts)
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => b.count - a.count);
+  ];
 }
 
 export default async function StoresContent() {
@@ -150,58 +92,13 @@ export default async function StoresContent() {
   const timeSeriesData = processTimeSeriesData(stores);
   const heatmapData = processHeatmapData(stores);
   const performanceMetrics = calculatePerformanceMetrics(stores);
-  const deadlineAnalysis = processDeadlineAnalysis(stores);
-  const printTypeAnalysis = processPrintTypeAnalysis(stores);
 
   const tableColumns = [
-    { key: 'PROJ', label: 'Project' },
-    { 
-      key: 'Print Type (from Print Types)', 
-      label: 'Print Types',
-      render: (value: string | string[]) => {
-        if (Array.isArray(value)) {
-          return (
-            <div className="flex flex-wrap gap-1">
-              {value.map((type, index) => (
-                <Badge key={index} variant="outline" className="text-xs">{type}</Badge>
-              ))}
-            </div>
-          );
-        }
-        return value ? <Badge variant="outline">{value}</Badge> : 'N/A';
-      }
-    },
-    { 
-      key: 'Order Deadline', 
-      label: 'Deadline Status',
-      render: (value: string) => {
-        if (!value) return <Badge variant="outline">No Deadline</Badge>;
-        const deadline = new Date(value);
-        const now = new Date();
-        const diffDays = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        
-        let variant: "default" | "secondary" | "destructive" | "outline" = "outline";
-        let text = deadline.toLocaleDateString();
-        
-        if (diffDays < 0) {
-          variant = "destructive";
-          text = `Overdue (${Math.abs(diffDays)}d)`;
-        } else if (diffDays <= 3) {
-          variant = "destructive";
-          text = `${diffDays}d left`;
-        } else if (diffDays <= 7) {
-          variant = "secondary";
-          text = `${diffDays}d left`;
-        }
-        
-        return <Badge variant={variant}>{text}</Badge>;
-      }
-    },
-    { 
-      key: 'Created On', 
-      label: 'Created',
-      render: (value: string) => value ? new Date(value).toLocaleDateString() : 'N/A'
-    },
+    { key: 'Store Name', label: 'Store Name' },
+    { key: 'League', label: 'League' },
+    { key: 'Print Type (from Print Types)', label: 'Print Types' },
+    { key: 'Order Deadline', label: 'Deadline' },
+    { key: 'Created On', label: 'Created' },
   ];
 
   return (
@@ -212,18 +109,57 @@ export default async function StoresContent() {
         <TimeSeriesChart 
           data={timeSeriesData}
           title="Store Orders Timeline"
-          description="Daily order creation with cumulative volume"
+          description="Daily store orders with cumulative volume"
           showCumulative={true}
+        />
+        
+        <HeatmapChart 
+          data={heatmapData}
+          title="Order Activity Heatmap"
+          description="When store orders are typically created"
         />
       </div>
       
-      <div className="grid gap-6">
-        <HeatmapChart 
-          data={heatmapData}
-          title="Order Creation Patterns"
-          description="When store orders are typically placed"
-        />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Store Orders Summary</CardTitle>
+          <CardDescription>Key insights about store orders</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 border rounded-lg bg-blue-50">
+              <div className="text-2xl font-bold text-blue-600">
+                {stores.length}
+              </div>
+              <div className="text-sm text-blue-700 font-medium">Total Orders</div>
+            </div>
+            
+            <div className="text-center p-4 border rounded-lg bg-yellow-50">
+              <div className="text-2xl font-bold text-yellow-600">
+                {stores.filter(s => {
+                  const deadline = s.fields['Order Deadline'];
+                  if (!deadline) return false;
+                  const deadlineDate = new Date(deadline);
+                  const now = new Date();
+                  return deadlineDate > now && deadlineDate.getTime() - now.getTime() < 7 * 24 * 60 * 60 * 1000;
+                }).length}
+              </div>
+              <div className="text-sm text-yellow-700 font-medium">Due This Week</div>
+            </div>
+            
+            <div className="text-center p-4 border rounded-lg bg-red-50">
+              <div className="text-2xl font-bold text-red-600">
+                {stores.filter(s => {
+                  const deadline = s.fields['Order Deadline'];
+                  if (!deadline) return false;
+                  return new Date(deadline) < new Date();
+                }).length}
+              </div>
+              <div className="text-sm text-red-700 font-medium">Overdue</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
       <DetailedDataTable 
         data={stores}
