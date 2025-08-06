@@ -1,0 +1,19 @@
+[build]
+  publish = ".next"
+  command = "npm install --legacy-peer-deps && npm run build"
+
+[build.environment]
+  NODE_VERSION = "20.18.0"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[context.production.environment]
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[context.deploy-preview.environment]  
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[context.branch-deploy.environment]
+  NEXT_TELEMETRY_DISABLED = "1"
